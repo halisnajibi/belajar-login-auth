@@ -146,6 +146,11 @@ Wrong Password!
       $this->email->subject('Account Verification');
       // Isi email 
       $this->email->message('Clik this link to verify you account : <a href= "' . base_url() . 'auth/verify?email=' . $this->input->post('email') . '&token=' . urlencode($token) . '">Active</a>');
+    } else if ($type == 'forgot') {
+      // Subject email 
+      $this->email->subject('reset password');
+      // Isi email 
+      $this->email->message('Clik this link to reset  you password : <a href= "' . base_url() . 'auth/resetpassword?email=' . $this->input->post('email') . '&token=' . urlencode($token) . '">Reset Password</a>');
     }
     // Tampilkan pesan sukses atau error 
     if ($this->email->send()) {
@@ -220,5 +225,90 @@ Account activation failed!wrong email !!
   {
     $data['title'] = '404';
     $this->load->view('errors/404', $data);
+  }
+
+  public function forgotPassword()
+  {
+    $this->form_validation->set_rules('email', 'Email', 'trim|required|valid_email');
+    if ($this->form_validation->run() == false) {
+      $this->load->view('template/auth_header');
+      $this->load->view('auth/forgot-password');
+      $this->load->view('template/auth_footer');
+    } else {
+      //berhasil validasi
+      $email = $this->input->post('email');
+      $user = $this->db->get_Where('user', ['email' => $email, 'is_active' => 1])->row_array();
+      if ($user) {
+        //jika ada user
+        $token = base64_encode(random_bytes(32));
+        $user_token = [
+          'email' => $email,
+          'token' => $token,
+          'date_created' => time()
+        ];
+        $this->db->insert('user_token', $user_token);
+        $this->_sendEmail($token, 'forgot');
+        $this->session->set_flashdata('message', '<div class="alert alert-success" role="alert">
+please check your email to reset password
+</div>');
+        redirect('auth/forgotPassword');
+      } else {
+        $this->session->set_flashdata('message', '<div class="alert alert-danger" role="alert">
+email is not register or active!
+</div>');
+        redirect('auth/forgotPassword');
+      }
+    }
+  }
+
+  public function resetpassword()
+  {
+    $email = $this->input->get('email');
+    $token = $this->input->get('token');
+    $user = $this->db->get_where('user', ['email' => $email])->row_array();
+    if ($user) {
+      $user_token = $this->db->get_where('user_token', ['token' => $token])->row_array();
+
+      if ($user_token) {
+        //jika berhasil validasi
+        $this->session->set_userdata('reset_email', $email);
+        $this->changepassword();
+      } else {
+        $this->session->set_flashdata('message', '<div class="alert alert-danger" role="alert">
+wrong token!
+</div>');
+        redirect('auth/forgotPassword');
+      }
+    } else {
+      $this->session->set_flashdata('message', '<div class="alert alert-danger" role="alert">
+wrong email!
+</div>');
+      redirect('auth/forgotPassword');
+    }
+  }
+
+  public function changepassword()
+  {
+    if (!$this->session->userdata('reset_email')) {
+      redirect('auth');
+    }
+    $this->form_validation->set_rules('password1', 'Password', 'trim|required|min_length[3]|matches[password2]');
+    $this->form_validation->set_rules('password2', 'Repeat Password', 'trim|required|min_length[3]|matches[password1]');
+    if ($this->form_validation->run() == false) {
+      $this->load->view('template/auth_header');
+      $this->load->view('auth/changepasswod');
+      $this->load->view('template/auth_footer');
+    } else {
+      $password  = password_hash($this->input->post('password1'), PASSWORD_DEFAULT);
+      $email = $this->session->userdata('reset_email');
+      $this->db->set('password', $password);
+      $this->db->where('email', $email);
+      $this->db->update('user');
+      $this->session->unset_userdata('reset_email');
+      $this->session->set_flashdata('message', '<div class="alert alert-success" role="alert">
+Password hash been change !!please login!!
+</div>');
+      redirect('auth');
+    }
   }
 }
